@@ -206,7 +206,18 @@ See [Proxmark3 precompiled builds](https://www.proxmarkbuilds.org/)
 
 ## Proxmark3 GUI
 
-The official PM3-GUI from Gaucho will not work. Not to mention is quite old and not maintained any longer.
+This repository ships a web command centre that drives the client in this tree —
+see [`gui/README.md`](/gui/README.md).
+
+```
+make client && pip install -r gui/requirements.txt && ./gui/pm3-gui
+```
+
+It runs the real `proxmark3` client behind a pseudo-terminal, so every action in
+the interface is an ordinary client command; the CLI remains fully usable at the
+same time.
+
+Third-party GUIs. The official PM3-GUI from Gaucho will not work. Not to mention is quite old and not maintained any longer.
 
 - [Proxmark3 Universal GUI](https://github.com/burma69/PM3UniversalGUI) will work more or less.
 - [Proxmark3 GUI cross-compiled](https://github.com/wh201906/Proxmark3GUI/) which is recently updated and claims to support latest source of this repo.

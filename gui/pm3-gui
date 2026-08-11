@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Launch the Proxmark3 command centre.
+#
+#   ./gui/pm3-gui                 auto-detect the device, serve on 127.0.0.1:8788
+#   ./gui/pm3-gui --offline       run the client without connecting to hardware
+#   ./gui/pm3-gui --help          all options
+set -euo pipefail
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$HERE/.."
+exec "${PYTHON:-python3}" -m gui.server "$@"

@@ -1,0 +1,158 @@
+/* Reset, base typography and the shared instrument idioms. */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body { height: 100%; }
+
+body {
+  margin: 0;
+  background: var(--void);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow: hidden;
+}
+
+/* Ambient graticule — the page sits on instrument ruling, not a dot grid. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background-image: var(--graticule);
+  opacity: 0.55;
+  pointer-events: none;
+  z-index: 0;
+}
+
+h1, h2, h3, h4, p, figure, ul, ol, dl, dd { margin: 0; }
+ul, ol { padding: 0; list-style: none; }
+img, svg, canvas { display: block; max-width: 100%; }
+
+a { color: var(--hf); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+button, input, select, textarea {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: none;
+}
+button { cursor: pointer; }
+button:disabled { cursor: not-allowed; opacity: 0.45; }
+
+:focus { outline: none; }
+:focus-visible {
+  outline: 2px solid var(--hf);
+  outline-offset: 2px;
+  border-radius: var(--radius);
+}
+
+::selection { background: var(--hf-dim); color: var(--ink-strong); }
+
+/* Scrollbars styled as instrument tracks. */
+* { scrollbar-width: thin; scrollbar-color: var(--edge-bright) transparent; }
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background: var(--edge-bright);
+  border: 3px solid var(--void);
+  border-radius: 6px;
+}
+*::-webkit-scrollbar-thumb:hover { background: var(--ink-faint); }
+
+/* --------------------------------------------------------------- typography */
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  letter-spacing: var(--track-eyebrow);
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  font-weight: 500;
+}
+
+.page-title {
+  font-family: var(--font-mono);
+  font-size: var(--text-lg);
+  font-weight: 600;
+  letter-spacing: var(--track-tight);
+  color: var(--ink-strong);
+}
+
+.readout {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--text-2xl);
+  font-weight: 300;
+  line-height: 1;
+  color: var(--ink-strong);
+  letter-spacing: -0.02em;
+}
+.readout .unit {
+  font-size: var(--text-md);
+  color: var(--ink-muted);
+  font-weight: 400;
+  margin-left: 0.15em;
+}
+
+.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.muted { color: var(--ink-muted); }
+.faint { color: var(--ink-faint); }
+.tnum { font-variant-numeric: tabular-nums; }
+.truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+/* Band ownership: one hue per radio, applied consistently everywhere. */
+.band-lf { color: var(--lf); }
+.band-hf { color: var(--hf); }
+
+/* ------------------------------------------------------------ dotted leader
+   The client prints "Compiler.......... GCC 15.3.0". That leader is the
+   instrument's own way of binding a label to a value, so the GUI keeps it as
+   its primary data row rather than inventing a two-column table look. */
+.leader {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  padding: 0.3rem 0;
+  min-width: 0;
+}
+.leader > .leader-key { color: var(--ink-muted); white-space: nowrap; }
+.leader > .leader-fill {
+  flex: 1 1 auto;
+  min-width: 1.5rem;
+  align-self: center;
+  height: 1px;
+  /* Dash tile rather than a radial gradient: sub-pixel circles disappear at
+     1px tall on some renderers. */
+  background-image: linear-gradient(to right, var(--edge-bright) 0 1px, transparent 1px 4px);
+  background-size: 4px 1px;
+  background-repeat: repeat-x;
+  opacity: 0.8;
+}
+.leader > .leader-value {
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+.leader.is-warning > .leader-value { color: var(--warn); }
+.leader.is-error > .leader-value,
+.leader.is-critical > .leader-value { color: var(--err); }
+.leader.is-success > .leader-value { color: var(--ok); }
+
+/* ------------------------------------------------------------------ layout */
+.stack { display: flex; flex-direction: column; gap: var(--s-4); }
+.stack-sm { display: flex; flex-direction: column; gap: var(--s-2); }
+.row { display: flex; align-items: center; gap: var(--s-3); }
+.row-wrap { display: flex; align-items: center; gap: var(--s-3); flex-wrap: wrap; }
+.spread { display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); }
+.grow { flex: 1 1 auto; min-width: 0; }

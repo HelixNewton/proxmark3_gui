@@ -1,0 +1,7 @@
+# Runtime dependencies of the GUI server.
+# aiohttp is required; psutil and pyserial are optional but strongly recommended
+# (without them the dashboard reports host metrics / port discovery as
+# unavailable rather than guessing).
+aiohttp>=3.9
+psutil>=5.9
+pyserial>=3.5

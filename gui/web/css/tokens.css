@@ -1,0 +1,125 @@
+/* ===========================================================================
+   PM3 COMMAND CENTRE — DESIGN TOKENS
+   ---------------------------------------------------------------------------
+   The palette is band-coded, not decorative: amber always means the 125 kHz LF
+   side of the instrument, cyan always means the 13.56 MHz HF side. Charts,
+   badges and status pills inherit those two hues so a colour on screen always
+   answers "which radio is this?". Red / yellow / green are reserved strictly
+   for severity, so they never compete with band meaning.
+   =========================================================================== */
+
+:root {
+  /* --- surfaces: dark desaturated blue-green, the inside of an instrument --- */
+  --void: #05080a;
+  --void-deep: #030506;
+  --panel: #0a1013;
+  --panel-raised: #0e161a;
+  --panel-inset: #070c0e;
+  --edge: #17262c;
+  --edge-bright: #22383f;
+
+  /* --- band colours: the two radios --- */
+  --lf: #f2a63b;          /* 125 kHz */
+  --lf-dim: #6b4a1c;
+  --lf-glow: rgba(242, 166, 59, 0.22);
+  --hf: #3ee0d5;          /* 13.56 MHz */
+  --hf-dim: #16565a;
+  --hf-glow: rgba(62, 224, 213, 0.2);
+
+  /* --- severity: never used for band data --- */
+  --ok: #4ade80;
+  --warn: #ffc53d;
+  --err: #ff4d5e;
+  --crit: #ff2d55;
+  --info: #7aa7c7;
+
+  /* --- text ---------------------------------------------------------------
+     Four steps, each measured against --panel: 19:1, 13:1, 7.7:1 and 5.2:1.
+     Even the faintest step clears WCAG AA for body text, because every one of
+     them carries real information — eyebrows label sections and axis ticks
+     carry values, so none of them may fade into decoration. */
+  --ink-strong: #f2fbfd;   /* 19:1 — readouts, headings */
+  --ink: #d5e3e7;          /* 13:1 — body and values */
+  --ink-muted: #93a8b0;    /* 7.7:1 — labels, secondary text */
+  --ink-faint: #728990;    /* 5.2:1 — eyebrows, axis ticks, metadata */
+  --ink-inverse: #04090b;
+
+  /* --- typography ---------------------------------------------------------
+     No webfonts: a strict CSP keeps the page self-contained, so personality
+     comes from setting rather than from exotic families. Monospace carries the
+     instrument voice; the grotesque handles prose. */
+  --font-mono: ui-monospace, "JetBrains Mono", "IBM Plex Mono", "SFMono-Regular",
+    "Menlo", "Consolas", "DejaVu Sans Mono", monospace;
+  --font-sans: "Inter", "Segoe UI", system-ui, -apple-system, "Helvetica Neue",
+    sans-serif;
+
+  --text-xs: 0.6875rem;   /* 11px — eyebrows, ticks */
+  --text-sm: 0.78125rem;  /* 12.5px — dense data */
+  --text-base: 0.875rem;  /* 14px — body */
+  --text-md: 1rem;
+  --text-lg: 1.375rem;
+  --text-xl: 2rem;
+  --text-2xl: 2.75rem;    /* readouts */
+
+  --track-eyebrow: 0.18em;
+  --track-tight: -0.01em;
+
+  /* --- space: 4px base --- */
+  --s-1: 0.25rem;
+  --s-2: 0.5rem;
+  --s-3: 0.75rem;
+  --s-4: 1rem;
+  --s-5: 1.5rem;
+  --s-6: 2rem;
+  --s-7: 3rem;
+
+  /* --- structure: hairlines and bezels, not rounded cards --- */
+  --hair: 1px solid var(--edge);
+  --hair-bright: 1px solid var(--edge-bright);
+  --radius: 2px;
+  --radius-lg: 3px;
+
+  --shadow-panel: 0 1px 0 rgba(255, 255, 255, 0.02) inset,
+                  0 12px 32px -20px rgba(0, 0, 0, 0.9);
+  --glow-hf: 0 0 0 1px var(--hf-dim), 0 0 18px -6px var(--hf-glow);
+  --glow-lf: 0 0 0 1px var(--lf-dim), 0 0 18px -6px var(--lf-glow);
+
+  /* --- motion: fast and functional --- */
+  --t-fast: 110ms cubic-bezier(0.4, 0, 0.2, 1);
+  --t-base: 190ms cubic-bezier(0.4, 0, 0.2, 1);
+  --t-slow: 380ms cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* --- layout --- */
+  --rail-w: 15rem;
+  --rail-w-collapsed: 3.5rem;
+  --topbar-h: 3.25rem;
+  --content-max: 105rem;
+
+  /* --- the graticule: oscilloscope ruling behind every panel ------------- */
+  --graticule:
+    repeating-linear-gradient(to right, rgba(62, 224, 213, 0.035) 0 1px,
+      transparent 1px 44px),
+    repeating-linear-gradient(to bottom, rgba(62, 224, 213, 0.035) 0 1px,
+      transparent 1px 44px);
+}
+
+/* The interface is a dark instrument by design; it does not track the OS theme.
+   High contrast users still get a legible ramp because every foreground token
+   clears 4.5:1 against its surface. */
+@media (prefers-contrast: more) {
+  :root {
+    --ink: #eef7f9;
+    --ink-muted: #b6c8ce;
+    --ink-faint: #9db4bc;
+    --edge: #2b444d;
+    --edge-bright: #3d5f6a;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --t-fast: 1ms;
+    --t-base: 1ms;
+    --t-slow: 1ms;
+  }
+}
