@@ -154,6 +154,11 @@ async def post_session_connect(request: web.Request) -> web.Response:
     command = f"hw connect -p {port}" if port else "hw connect"
     result = await run_command(request, command, timeout=45)
     _, _, session, _, _ = ctx(request)
+    if session.connected:
+        # Record the port so the Hardware page shows it and the disconnection
+        # watchdog starts. `hw connect` with no argument picks a port itself and
+        # prints it ("Using UART port /dev/ttyACM0"), so recover it from there.
+        session.attach_port(port or parsers.uart_port(result.output) or "")
     return ok({
         "result": result.to_dict(),
         "connected": session.connected,
@@ -591,8 +596,11 @@ async def post_trace_save(request: web.Request) -> web.Response:
 @routes.get("/api/scripts")
 async def get_scripts(request: web.Request) -> web.Response:
     config, _, _, _, _ = ctx(request)
+    # `?refresh=1` (the Rescan button) re-reads every script header from disk;
+    # otherwise the cached listing is used.
+    use_cache = request.query.get("refresh") != "1"
     listing = await asyncio.get_running_loop().run_in_executor(
-        None, scripts.list_scripts, config.script_dirs)
+        None, scripts.list_scripts, config.script_dirs, use_cache)
     return ok(listing)
 
 

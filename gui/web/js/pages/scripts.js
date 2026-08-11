@@ -135,10 +135,10 @@ export function mount({ params }) {
     }
   }
 
-  async function load() {
+  async function load(refresh = false) {
     fill(listBody, loading('Scanning script directories…'));
     try {
-      const response = await api.scripts();
+      const response = await api.scripts(refresh);
       allScripts = response.scripts;
       fill(kindFilter, [
         ['all', `All (${allScripts.length})`],
@@ -172,7 +172,7 @@ export function mount({ params }) {
         h('h1.page-title', 'Scripts'),
         h('p.lede', 'Lua, Cmd and Python scripts the client can run. Files in ~/.proxmark3 take precedence over the ones shipped with the repository.'),
       ]),
-      h('div.view-actions', [h('button.btn.is-sm', { onclick: load }, 'Rescan')]),
+      h('div.view-actions', [h('button.btn.is-sm', { onclick: () => load(true) }, 'Rescan')]),
     ]),
     h('div.grid-split', [
       h('section.panel', [

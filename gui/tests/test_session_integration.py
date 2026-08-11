@@ -170,3 +170,109 @@ async def test_busy_is_still_reported_when_the_wait_is_hopeless(session):
     with pytest.raises(SessionBusy):
         await session.execute("hw version", queue_timeout=0.5)
     await long_running
+
+
+def test_port_disappearance_is_reported(tmp_path):
+    """An unplugged device must not leave the status pill reading ONLINE."""
+    import asyncio as aio
+    from gui.server import session as session_module
+
+    async def main():
+        # A fake port node that we delete mid-session, standing in for a device
+        # being pulled out. The client itself runs offline; only the watchdog
+        # is under test.
+        fake_port = tmp_path / "ttyFAKE"
+        fake_port.write_text("")
+
+        config = AppConfig(autostart=False, incognito=True)
+        live = PM3Session(config, EventBus())
+        await live.start("")
+        watcher = None
+        try:
+            live.port = str(fake_port)
+            live._ensure_watchdog()
+            watcher = live._watchdog
+
+            assert live.status != session_module.ERROR
+            fake_port.unlink()
+            await _until(lambda: live.status == session_module.ERROR, timeout=15)
+
+            assert "no longer exists" in live.status_detail
+            assert live.state()["connected"] is False
+            assert live.last_error and "Device removed" in live.last_error
+
+            # The watcher keeps running: the client reconnects on its own, so a
+            # one-shot watcher would miss every unplug after the first.
+            assert not watcher.done()
+            fake_port.write_text("")
+            await _until(lambda: live.last_error is None, timeout=15)
+            assert not watcher.done()
+        finally:
+            if watcher:
+                watcher.cancel()
+            await live.aclose()
+
+    aio.run(main())
+
+
+async def _until(predicate, timeout=10.0, interval=0.2):
+    """Poll until `predicate()` holds, so tests do not hard-code timings."""
+    deadline = asyncio.get_running_loop().time() + timeout
+    while asyncio.get_running_loop().time() < deadline:
+        if predicate():
+            return
+        await asyncio.sleep(interval)
+    raise AssertionError("condition not met within timeout")
+
+
+@with_session
+async def test_attach_port_rearms_a_finished_watchdog(session, tmp_path=None):
+    """A second unplug must be detected as reliably as the first."""
+    import tempfile
+    from pathlib import Path
+
+    with tempfile.TemporaryDirectory() as directory:
+        port = Path(directory) / "ttyFAKE"
+        port.write_text("")
+
+        session.attach_port(str(port))
+        first = session._watchdog
+        assert first is not None and not first.done()
+
+        first.cancel()
+        await _until(lambda: first.done(), timeout=5)
+
+        # Re-attaching the *same* port must still start a new watcher — the old
+        # guard returned early when the port was unchanged and left none running.
+        session.attach_port(str(port))
+        assert session._watchdog is not first
+        assert not session._watchdog.done()
+        session._watchdog.cancel()
+
+
+@with_session
+async def test_attach_port_clears_a_stale_disconnect_error(session):
+    session.last_error = "Device removed — /dev/ttyACM0 no longer exists"
+    session.attach_port("/dev/ttyACM0")
+    try:
+        assert session.last_error is None
+    finally:
+        if session._watchdog:
+            session._watchdog.cancel()
+
+
+@with_session
+async def test_a_command_after_an_abort_still_captures_its_output(session):
+    """Regression: the abort keystroke produces an extra prompt.
+
+    That prompt arrives after the timed-out command has returned. Left
+    unconsumed, it satisfies the *next* command's wait immediately and that
+    command reports empty output despite having run.
+    """
+    timed_out = await session.execute("msleep -t 4000", timeout=0.5)
+    assert timed_out.timed_out is True
+
+    for _ in range(3):
+        result = await session.execute("hw version", timeout=30)
+        assert "Compiler" in result.output, "a stray prompt truncated the capture"
+        assert result.duration > 0.01

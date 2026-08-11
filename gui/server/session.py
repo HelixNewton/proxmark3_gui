@@ -51,6 +51,10 @@ ERROR = "error"
 DEFAULT_TIMEOUT = 30.0
 #: How long a command waits for the client to become free before reporting busy.
 QUEUE_TIMEOUT = 20.0
+#: How often the attached serial port is checked for disappearance.
+PORT_POLL_INTERVAL = 3.0
+#: How long a stuck command is waited on before the hold is released.
+RESYNC_GIVE_UP = 120.0
 SCROLLBACK_BYTES = 256 * 1024
 
 
@@ -124,8 +128,10 @@ class PM3Session:
         self._prompt_event: asyncio.Event = asyncio.Event()
         self._exit_event: asyncio.Event = asyncio.Event()
         self._tail = ""  # cleaned tail used for prompt detection
+        self._last_chunk_at = 0.0
         #: Set when a timed-out command is still producing output.
         self._desynced = False
+        self._watchdog: asyncio.Task | None = None
 
     # ------------------------------------------------------------------ state
     @property
@@ -228,6 +234,9 @@ class PM3Session:
             self._set_status(ERROR, self.last_error)
             raise SessionNotRunning(self.last_error)
 
+        if self.port:
+            self._ensure_watchdog()
+
         self.bus.notify(
             "success" if self.connected else "info",
             "Client started",
@@ -245,6 +254,9 @@ class PM3Session:
         return "The proxmark3 client exited during startup."
 
     async def stop(self) -> dict:
+        if self._watchdog:
+            self._watchdog.cancel()
+            self._watchdog = None
         if self.fd is not None and self._loop is not None:
             with contextlib.suppress(Exception):
                 self._loop.remove_reader(self.fd)
@@ -333,6 +345,7 @@ class PM3Session:
         while self._scrollback_size > SCROLLBACK_BYTES and len(self._scrollback) > 1:
             self._scrollback_size -= len(self._scrollback.popleft())
 
+        self._last_chunk_at = time.monotonic()
         text = data.decode("utf-8", "replace")
         self.bus.publish("console", text)
         if self._capture is not None:
@@ -348,6 +361,9 @@ class PM3Session:
             if device == "offline":
                 self._set_status(OFFLINE, "Client online, no device connected")
             else:
+                # A live prompt supersedes any earlier disconnection message.
+                if self.last_error and "Device removed" in self.last_error:
+                    self.last_error = None
                 self._set_status(ONLINE, f"Device connected ({device})")
             self._prompt_event.set()
 
@@ -409,6 +425,11 @@ class PM3Session:
                     self._desynced = True
                     asyncio.create_task(self._resync(), name="pm3-resync")
 
+            if timed_out and not self._desynced:
+                # Consume the extra prompt the abort keystroke produces, so it
+                # cannot be mistaken for the next command's.
+                await self._settle()
+
             raw = "".join(self._capture or [])
             self._capture = None
             result = CommandResult(
@@ -436,6 +457,22 @@ class PM3Session:
                 lines.pop()
         return "\n".join(lines).strip("\n")
 
+    async def _settle(self, quiet: float = 0.4, limit: float = 3.0) -> None:
+        """Wait for the output stream to fall silent.
+
+        Aborting injects an Enter, which the client answers with an extra prompt
+        once the running command finally returns. That prompt arrives after
+        `execute` has handed back its result, and would immediately satisfy the
+        *next* command's wait — returning empty output for a command that in
+        fact ran. Draining to silence while still holding the lock consumes it.
+        """
+        deadline = time.monotonic() + limit
+        while time.monotonic() < deadline:
+            idle = time.monotonic() - self._last_chunk_at
+            if idle >= quiet:
+                return
+            await asyncio.sleep(min(quiet - idle, 0.1))
+
     async def interrupt(self) -> None:
         """Abort the running command the way the client itself documents.
 
@@ -450,20 +487,113 @@ class PM3Session:
                 os.write(self.fd, b"\n")
 
     async def _resync(self) -> None:
-        """Wait for the client to come back to a prompt after a stuck command."""
+        """Wait for the client to return to a prompt after a stuck command.
+
+        The hold is never released speculatively. While a command is still
+        writing to the PTY, anything sent next would be swallowed as its abort
+        keystroke and its trailing output captured as the new command's result —
+        the exact corruption this flag exists to prevent. So the hold lifts only
+        on a real prompt; after a grace period the session is escalated to ERROR
+        so the operator is told to restart rather than being left guessing.
+        """
         self.bus.notify(
             "warning", "Client still busy",
             "A command timed out and did not abort. New commands are held until "
             "it finishes.")
+        escalate_at = time.time() + RESYNC_GIVE_UP
+        escalated = False
+
         while self.running:
+            if self.port and not Path(self.port).exists():
+                # The device was pulled. _watch_port owns that message; leaving
+                # quietly avoids a contradictory "restart the client" toast.
+                self._desynced = False
+                return
+
             self._prompt_event.clear()
             try:
                 await asyncio.wait_for(self._prompt_event.wait(), timeout=5)
             except asyncio.TimeoutError:
+                if not escalated and time.time() > escalate_at:
+                    escalated = True
+                    self._set_status(
+                        ERROR, "Client unresponsive — a command never finished")
+                    self.bus.notify(
+                        "error", "Client did not recover",
+                        "The command never finished and commands are still held. "
+                        "Restart the client from the Hardware page.",
+                        link="#/hardware")
                 continue
-            break
+
+            self._desynced = False
+            if escalated:
+                self.bus.notify("success", "Client recovered",
+                                "The client returned to a prompt.")
+            return
+
         self._desynced = False
-        self.bus.notify("success", "Client ready", "The client returned to a prompt.")
+
+    def attach_port(self, port: str) -> None:
+        """Record a port attached after startup (``hw connect``) and watch it.
+
+        Without this the session keeps ``port = None`` — the Hardware page would
+        show "not attached" while online, and the disconnection watchdog, which
+        only runs when a port is known, would never start.
+        """
+        if not port:
+            return
+        self.port = port
+        # Clear a stale disconnection message, or the Hardware page keeps showing
+        # a red error under a healthy status.
+        self.last_error = None
+        self._ensure_watchdog()
+        self.bus.emit("session", state=self.state(), previous=self.status)
+
+    def _ensure_watchdog(self) -> None:
+        """(Re)start the port watcher, including after a previous run finished."""
+        if self._watchdog and not self._watchdog.done():
+            return
+        self._watchdog = asyncio.create_task(self._watch_port(), name="pm3-port-watch")
+
+    async def _watch_port(self) -> None:
+        """Track whether the attached device is still present.
+
+        Status is otherwise derived only from the client's prompt, so an
+        unplugged Proxmark3 would leave the interface reporting ONLINE forever —
+        the one thing a status pill must never do.
+
+        This runs for the life of the session rather than stopping at the first
+        removal: the client reconnects by itself (``check_comm`` →
+        ``StartReconnectProxmark``) without any ``hw connect``, so a one-shot
+        watcher would miss every unplug after the first.
+        """
+        present = True
+        while self.running and self.port:
+            await asyncio.sleep(PORT_POLL_INTERVAL)
+            if not self.running or not self.port:
+                return
+
+            now_present = Path(self.port).exists()
+            if now_present == present:
+                continue
+            present = now_present
+
+            if not present:
+                detail = f"Device removed — {self.port} no longer exists"
+                self.last_error = detail
+                self._set_status(ERROR, detail)
+                self.bus.notify(
+                    "error", "Device disconnected",
+                    f"{self.port} disappeared. Re-plug the Proxmark3, then use "
+                    f"Attach device on the Hardware page.", link="#/hardware")
+            else:
+                # Back on the bus. The client may re-attach on its own at the
+                # next command; until a prompt proves it, do not claim ONLINE.
+                self.last_error = None
+                self.bus.notify(
+                    "info", "Device detected again",
+                    f"{self.port} is back. Use Attach device if the session does "
+                    f"not reconnect by itself.", link="#/hardware")
 
     async def write_raw(self, data: str) -> None:
         """Feed keystrokes straight into the PTY (Console page)."""

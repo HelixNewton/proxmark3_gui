@@ -45,6 +45,7 @@ class CommandCatalog:
         self.metadata: dict = {}
         self.source: str | None = None
         self.error: str | None = None
+        self._groups: dict[str, int] | None = None
 
     @classmethod
     def load(cls, path: Path) -> "CommandCatalog":
@@ -71,10 +72,14 @@ class CommandCatalog:
     # ------------------------------------------------------------------ query
     @property
     def groups(self) -> dict[str, int]:
-        counts: dict[str, int] = {}
-        for command in self.commands.values():
-            counts[command.group] = counts.get(command.group, 0) + 1
-        return dict(sorted(counts.items()))
+        """Command count per top-level group. Computed once — the catalogue is
+        immutable after load, and this is read on every /api/status."""
+        if self._groups is None:
+            counts: dict[str, int] = {}
+            for command in self.commands.values():
+                counts[command.group] = counts.get(command.group, 0) + 1
+            self._groups = dict(sorted(counts.items()))
+        return self._groups
 
     def get(self, name: str) -> Command | None:
         return self.commands.get(name.strip())

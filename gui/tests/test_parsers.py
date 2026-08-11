@@ -327,3 +327,69 @@ class TestTuneFromRealDevice:
     def test_the_tuning_graph_footer_is_not_read_as_a_measurement(self):
         tune = parsers.parse_tune(HW_TUNE_DEVICE)
         assert all(m["label"][0].isdigit() for m in tune["measurements"])
+
+
+# Verbatim `hw status` from a real PM3 Easy. Headings are flush-left, readings
+# are indented — that indentation is the only thing marking a section.
+HW_STATUS_GROUPED = """[#] Memory
+[#]   BigBuf_size............. 38392
+[#]   Available memory........ 36084
+[#] Tracing
+[#]   tracing ................ 1
+[#] Current FPGA image
+[#]   mode.................... fpga_pm3_hf.ncd image 2s30vq100
+[#] LF T55XX config
+[#]            [r]               [a]   [b]
+[#] ---------------------------+-----+-----+------
+[#] fixed bit length (default) |  31 |  20 |
+[#] Various
+[#]   Max stack usage......... 4088
+"""
+
+
+class TestBareHeadings:
+    def test_indentation_separates_headings_from_readings(self):
+        parsed = parsers.parse_sections(HW_STATUS_GROUPED)
+        names = [s["name"] for s in parsed["sections"]]
+        assert names == ["Memory", "Tracing", "Current FPGA image",
+                         "LF T55XX config", "Various"]
+
+    def test_readings_land_under_their_heading(self):
+        by_name = {s["name"]: s for s in parsers.parse_sections(HW_STATUS_GROUPED)["sections"]}
+        assert {e["key"] for e in by_name["Memory"]["entries"]} == {
+            "BigBuf_size", "Available memory"}
+        assert by_name["Various"]["entries"][0]["key"] == "Max stack usage"
+
+    def test_table_rows_and_rules_are_not_headings(self):
+        assert parsers.match_bare_heading("---------------------------+-----+------") is None
+        assert parsers.match_bare_heading("fixed bit length (default) |  31 |  20 |") is None
+
+    @pytest.mark.parametrize("line", [
+        "  BigBuf_size............. 38392",          # indented reading
+        "Using /home/x/.proxmark3/preferences.json",  # a path, not a heading
+        "Saved to json file /home/x/x.json",          # prose with a path
+        "loaded `/home/x/trace.pm3`",                 # back-ticked path
+    ])
+    def test_prose_and_readings_are_rejected(self, line):
+        assert parsers.match_bare_heading(line) is None
+
+    @pytest.mark.parametrize("line", ["Memory", "LF Sampling config", "Transfer Speed"])
+    def test_real_headings_are_accepted(self, line):
+        assert parsers.match_bare_heading(line) == line
+
+    def test_hw_version_bracket_sections_still_win(self):
+        names = [s["name"] for s in parsers.parse_version(HW_VERSION_DEVICE)["sections"]]
+        assert "Client" in names and "ARM" in names
+
+
+class TestUartPort:
+    def test_recovers_the_port_the_client_chose(self):
+        # `hw connect` with no argument picks a port and prints it; that is the
+        # only way to learn which one when the GUI did not specify it.
+        assert parsers.uart_port(
+            "[+] Using UART port /dev/ttyACM0\n[+] Communicating with PM3 over USB-CDC"
+        ) == "/dev/ttyACM0"
+
+    def test_absent_when_the_client_never_said(self):
+        assert parsers.uart_port("[!!] cannot communicate with the Proxmark3") is None
+        assert parsers.uart_port("") is None

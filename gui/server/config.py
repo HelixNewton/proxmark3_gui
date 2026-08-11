@@ -11,6 +11,7 @@ from __future__ import annotations
 import os
 import secrets
 import shutil
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -61,7 +62,13 @@ class AppConfig:
     #: Extra roots the file browser is allowed to read (never written to).
     debug: bool = False
 
+    #: `roots` stats every client directory and is read several times per
+    #: request, so results are held briefly. Short enough that a directory
+    #: appearing mid-session is picked up promptly.
+    ROOTS_TTL = 5.0
+
     def __post_init__(self) -> None:
+        self._roots_cache: tuple[float, dict[str, Path]] | None = None
         if not self.is_loopback and not self.auth_token:
             # Never expose an arbitrary-command-execution surface unauthenticated.
             self.auth_token = secrets.token_urlsafe(24)
@@ -74,6 +81,10 @@ class AppConfig:
     @property
     def roots(self) -> dict[str, Path]:
         """Named, read-constrained roots. Missing directories are simply omitted."""
+        if self._roots_cache is not None:
+            stamped, cached = self._roots_cache
+            if time.monotonic() - stamped < self.ROOTS_TTL:
+                return cached
         user = user_dir()
         candidates = {
             "traces": _first_existing(user / "traces", REPO_ROOT / "traces"),
@@ -111,6 +122,7 @@ class AppConfig:
                 continue
             seen.add(real)
             resolved[name] = real
+        self._roots_cache = (time.monotonic(), resolved)
         return resolved
 
     def writable_roots(self) -> set[str]:

@@ -46,8 +46,43 @@ def _extract_header(path: Path, max_lines: int = 25) -> dict:
     return {"description": description, "author": author}
 
 
-def list_scripts(script_dirs: dict[str, list[Path]]) -> dict:
-    """Return every runnable script grouped by language, with source directory."""
+#: Listing opens every script to read its header comment — ~107 files here. The
+#: global search endpoint calls this on each keystroke, so the result is cached
+#: and only recomputed when a script directory actually changes.
+_CACHE: dict[str, object] = {"signature": None, "value": None}
+
+
+def _signature(script_dirs: dict[str, list[Path]]) -> tuple:
+    """Cheap fingerprint of the search path: which dirs exist and their mtimes."""
+    marks = []
+    for kind, directories in sorted(script_dirs.items()):
+        for directory in directories:
+            try:
+                marks.append((kind, str(directory), directory.stat().st_mtime_ns))
+            except OSError:
+                marks.append((kind, str(directory), None))
+    return tuple(marks)
+
+
+def list_scripts(script_dirs: dict[str, list[Path]], use_cache: bool = True) -> dict:
+    """Return every runnable script grouped by language, with source directory.
+
+    A directory mtime changes when a script is added, removed or renamed, which
+    is what the listing reflects. Editing a script in place does not invalidate
+    the cache; the Scripts page passes ``use_cache=False`` so its Rescan button
+    always reads from disk.
+    """
+    signature = _signature(script_dirs)
+    if use_cache and _CACHE["signature"] == signature and _CACHE["value"] is not None:
+        return _CACHE["value"]  # type: ignore[return-value]
+
+    result = _scan_scripts(script_dirs)
+    _CACHE["signature"] = signature
+    _CACHE["value"] = result
+    return result
+
+
+def _scan_scripts(script_dirs: dict[str, list[Path]]) -> dict:
     scripts: list[dict] = []
     searched: list[dict] = []
 

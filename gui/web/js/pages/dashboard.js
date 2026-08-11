@@ -51,8 +51,16 @@ export function mount({ router }) {
     fill(sessionReadout, [
       h('div.stat', [
         h('div.stat-head', [h('span.eyebrow', 'Device link'), statePill(session.status)]),
-        h('div.readout', session.status === 'online' ? 'ONLINE' : session.status.toUpperCase()),
+        h('div.readout', {
+          style: session.status === 'error' ? { color: 'var(--err)' } : null,
+        }, session.status === 'online' ? 'ONLINE' : session.status.toUpperCase()),
         h('div.muted', { style: { fontSize: 'var(--text-xs)' } }, session.detail || ''),
+        session.status === 'error'
+          ? h('button.btn.is-sm.is-danger', {
+              style: { marginTop: '0.35rem' },
+              onclick: () => router.navigate('/hardware'),
+            }, 'Reconnect')
+          : null,
       ]),
       h('div.stat', [
         h('div.eyebrow', 'Serial port'),

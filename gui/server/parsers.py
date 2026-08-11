@@ -34,6 +34,27 @@ _SECTION_BRACKET_RE = re.compile(r"^\[\s*(?P<name>[^\]]+?)\s*\]$")
 _HAS_WORD_RE = re.compile(r"[A-Za-z0-9]")
 
 
+#: `hw status` groups by indentation rather than by decoration: the firmware
+#: prints "Memory" flush-left and its readings indented beneath it. Guards keep
+#: ordinary prose (paths, sentences, log lines) from being mistaken for a
+#: heading.
+_BARE_HEADING_RE = re.compile(r"^[A-Z][\w][\w \-/]{1,38}$")
+
+
+def match_bare_heading(body: str) -> str | None:
+    """Detect an unindented, undecorated section heading.
+
+    ``body`` must still carry its original leading whitespace — the indentation
+    *is* the signal.
+    """
+    if body[:1].isspace() or not body.strip():
+        return None
+    candidate = body.strip()
+    if any(ch in candidate for ch in "`:.=|"):
+        return None
+    return candidate if _BARE_HEADING_RE.match(candidate) else None
+
+
 def match_section(text: str) -> str | None:
     """Return a section name, or ``None`` if this is not a section header.
 
@@ -65,7 +86,9 @@ def parse_sections(text: str) -> dict:
         if not stripped:
             continue
 
-        section_name = match_section(stripped)
+        # `body` still carries its indentation, which is how `hw status` marks
+        # its headings; `stripped` is used for everything else.
+        section_name = match_section(stripped) or match_bare_heading(body)
         if section_name is not None:
             if current["entries"] or current["lines"]:
                 sections.append(current)
@@ -406,6 +429,16 @@ KNOWN_FAILURES = [
 #: The client's answer when a command needs hardware this build/device lacks —
 #: e.g. SPIFFS on a PM3GENERIC board, which has no external flash chip.
 _UNSUPPORTED_RE = re.compile(r"not available in this mode", re.I)
+
+
+#: "[+] Using UART port /dev/ttyACM0" — how the client reports the port it chose.
+_UART_PORT_RE = re.compile(r"Using UART port\s+(?P<port>\S+)")
+
+
+def uart_port(text: str) -> str | None:
+    """Recover the serial port the client selected, from its own output."""
+    match = _UART_PORT_RE.search(ansi.clean(text or ""))
+    return match.group("port") if match else None
 
 
 def is_unsupported(text: str) -> bool:

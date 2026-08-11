@@ -134,7 +134,7 @@ export const api = {
   traceLoad: (root, path) => post('/api/trace/load', { root, path }),
   traceSave: (name) => post('/api/trace/save', { name }),
 
-  scripts: () => get('/api/scripts'),
+  scripts: (refresh = false) => get(`/api/scripts${refresh ? '?refresh=1' : ''}`),
   runScript: (name, args, timeout) => post('/api/scripts/run', { name, args, timeout }),
 
   fileRoots: () => get('/api/files/roots'),

@@ -93,6 +93,12 @@ export function mount({ params }) {
     ]);
   }
 
+  // Rendering every match would build ~12 000 elements per keystroke on a busy
+  // log. Only the newest slice is drawn; older entries stay one click away and
+  // the count of what is hidden is always shown, so nothing is quietly dropped.
+  const RENDER_WINDOW = 600;
+  let windowSize = RENDER_WINDOW;
+
   function render() {
     const visible = entries.filter(matchesFilters);
     if (!visible.length) {
@@ -101,7 +107,18 @@ export function mount({ params }) {
         : empty('Log is empty', 'The client writes a new log file per session. Run a command to produce entries.'));
       return;
     }
-    fill(viewport, visible.map(lineNode));
+
+    const hidden = Math.max(0, visible.length - windowSize);
+    const slice = hidden ? visible.slice(-windowSize) : visible;
+    fill(viewport, [
+      hidden
+        ? h('button.logline', {
+            style: { justifyContent: 'center', width: '100%', color: 'var(--hf)' },
+            onclick: () => { windowSize += RENDER_WINDOW * 2; render(); },
+          }, `${hidden.toLocaleString()} older matching entries — click to show more`)
+        : null,
+      ...slice.map(lineNode),
+    ]);
     if (autoscroll) viewport.scrollTop = viewport.scrollHeight;
   }
 
@@ -170,8 +187,9 @@ export function mount({ params }) {
   });
   socket.connect();
 
-  const onFilter = debounce(render, 180);
-  levelSelect.addEventListener('change', render);
+  const resetWindow = () => { windowSize = RENDER_WINDOW; render(); };
+  const onFilter = debounce(resetWindow, 180);
+  levelSelect.addEventListener('change', resetWindow);
   searchInput.addEventListener('input', onFilter);
   fileSelect.addEventListener('change', load);
 
