@@ -356,10 +356,14 @@ export function mount({ router }) {
 
   renderSession();
   loadPorts();
-  loadVersion();
   loadActions();
-  if (store.get('session').status === 'online') loadStatus();
-  else fill(statusBody, offlineState('Runtime status'));
+  // The client runs one command at a time, so chain the panels that need one
+  // instead of firing them together.
+  (async () => {
+    await loadVersion();
+    if (store.get('session').status === 'online') await loadStatus();
+    else fill(statusBody, offlineState('Runtime status'));
+  })();
 
   unsubscribes.push(store.on('session', renderSession));
 

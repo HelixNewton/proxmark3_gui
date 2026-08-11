@@ -12,6 +12,7 @@ Design rules enforced here:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import time
 
@@ -380,14 +381,29 @@ async def get_signal_ops(request: web.Request) -> web.Response:
 
 
 async def _read_graph_buffer(request: web.Request, points: int) -> dict:
-    """Export the client's GraphBuffer via ``data save`` and read it back."""
+    """Export the client's GraphBuffer via ``data save`` and read it back.
+
+    The client never overwrites: given an existing ``foo.pm3`` it writes
+    ``foo-001.pm3``, then ``foo-002.pm3`` and so on. Reading the fixed name back
+    would therefore return the *first* export forever — real captures silently
+    replaced by stale data. So the scratch copies are cleared first and the file
+    that appears afterwards is the one that is read.
+    """
     config, _, _, _, _ = ctx(request)
     target = config.scratch_dir / "gui_graphbuffer"
+    for stale in config.scratch_dir.glob("gui_graphbuffer*.pm3"):
+        with contextlib.suppress(OSError):
+            stale.unlink()
+
     save = await run_command(request, f"data save -f {target}", timeout=45)
-    path = target.with_suffix(".pm3")
-    if not path.exists():
-        return {"samples": [], "count": 0, "error": "Client did not write a buffer file",
+
+    written = sorted(config.scratch_dir.glob("gui_graphbuffer*.pm3"))
+    if not written:
+        return {"points": [], "count": 0,
+                "error": "The client did not write a graph buffer file. "
+                         "The buffer may be empty.",
                 "raw": save.output}
+    path = written[0]
     text = path.read_text(encoding="utf-8", errors="replace")
     samples = parsers.parse_pm3_samples(text)
     reduced = parsers.downsample(samples, points)

@@ -101,12 +101,16 @@ async def test_rejects_multi_line_commands(session):
 
 
 @with_session
-async def test_one_command_at_a_time(session):
+async def test_commands_are_serialised(session):
+    """The client is single-threaded, so a second command waits its turn."""
     first = asyncio.create_task(session.execute("msleep -t 1500"))
     await asyncio.sleep(0.4)
-    with pytest.raises(SessionBusy):
-        await session.execute("hw version")
+    second = await session.execute("hw version", timeout=30)
     await first
+    # The second command waited rather than being rejected, and captured only
+    # its own output.
+    assert "Compiler" in second.output
+    assert "msleep" not in second.output
 
 
 @with_session
@@ -143,3 +147,26 @@ async def test_stop_then_start_again(session):
     await session.start("")
     assert session.running
     assert (await session.execute("hw version")).ok
+
+
+@with_session
+async def test_concurrent_commands_queue_instead_of_failing(session):
+    """Two panels loading at once must not make one of them error."""
+    results = await asyncio.gather(
+        session.execute("hw version"),
+        session.execute("prefs show"),
+    )
+    assert all(r.output for r in results)
+    # They ran one after the other, and neither captured the other's output.
+    assert "Compiler" in results[0].output
+    assert "hints" in results[1].output.lower()
+    assert "Compiler" not in results[1].output
+
+
+@with_session
+async def test_busy_is_still_reported_when_the_wait_is_hopeless(session):
+    long_running = asyncio.create_task(session.execute("msleep -t 4000", timeout=30))
+    await asyncio.sleep(0.4)
+    with pytest.raises(SessionBusy):
+        await session.execute("hw version", queue_timeout=0.5)
+    await long_running

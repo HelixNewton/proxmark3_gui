@@ -49,6 +49,8 @@ OFFLINE = "offline"
 ERROR = "error"
 
 DEFAULT_TIMEOUT = 30.0
+#: How long a command waits for the client to become free before reporting busy.
+QUEUE_TIMEOUT = 20.0
 SCROLLBACK_BYTES = 256 * 1024
 
 
@@ -353,7 +355,8 @@ class PM3Session:
         return b"".join(self._scrollback).decode("utf-8", "replace")
 
     # --------------------------------------------------------------- commands
-    async def execute(self, command: str, timeout: float = DEFAULT_TIMEOUT) -> CommandResult:
+    async def execute(self, command: str, timeout: float = DEFAULT_TIMEOUT,
+                      queue_timeout: float = QUEUE_TIMEOUT) -> CommandResult:
         """Run one command and capture its output.
 
         A newline in ``command`` would smuggle a second command past any caller
@@ -366,14 +369,23 @@ class PM3Session:
             raise ValueError("Command must be a single line")
         if not self.running:
             raise SessionNotRunning("proxmark3 client is not running")
-        if self._lock.locked():
-            raise SessionBusy("Another command is still running")
         if self._desynced:
             raise SessionBusy(
                 "The client has not finished an earlier command that timed out. "
                 "Its output would be mixed into this one.")
 
-        async with self._lock:
+        # The client is single-threaded, so commands are serialised. Wait a
+        # short while for the lock rather than failing outright: a page that
+        # loads two panels at once should queue, not error. A genuinely long
+        # command still surfaces as busy once the grace period expires.
+        try:
+            await asyncio.wait_for(self._lock.acquire(), timeout=queue_timeout)
+        except asyncio.TimeoutError:
+            raise SessionBusy(
+                f"The client is still running `{self.last_command}`. "
+                "Wait for it to finish, or abort it.") from None
+
+        try:
             self.command_count += 1
             self.last_command = command
             started = time.time()
@@ -408,6 +420,8 @@ class PM3Session:
             )
             self.bus.emit("command.end", **result.to_dict())
             return result
+        finally:
+            self._lock.release()
 
     @staticmethod
     def _trim(raw: str, command: str) -> str:
