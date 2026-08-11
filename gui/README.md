@@ -12,6 +12,8 @@ have typed at the `pm3 -->` prompt.
    browser ──HTTP/WebSocket──▶ aiohttp server ──PTY──▶ proxmark3 -i ──USB──▶ device
 ```
 
+![Dashboard](screenshots/dashboard.png)
+
 ## Quick start
 
 ```bash
@@ -62,6 +64,34 @@ command reference all work without hardware.
 | **Files** | the client's own directories (traces, dumps, dictionaries, resources) |
 | **Logs** | `~/.proxmark3/logs/log_*.txt`, tailed live |
 | **Configuration** | `prefs show` / `prefs set` |
+
+## Screenshots
+
+Every screenshot below is the real interface driving a real client against a
+Proxmark3 on `/dev/ttyACM0` — no mockups, no placeholder data.
+
+**Tag scan** — `hf search`, parsed into identifiers and the client's own report.
+
+![Tag scan](screenshots/tags.png)
+
+**Console** — the raw PTY. The same terminal you would get from `./pm3`, with
+tab completion out of the client's command catalogue.
+
+![Console](screenshots/console.png)
+
+**Signal** — the client's graph buffer, scroll to zoom, hover to read a sample.
+
+![Signal](screenshots/signal.png)
+
+**Hardware** — session state, port selection, `hw version` and the device's
+runtime status side by side.
+
+![Hardware](screenshots/hardware.png)
+
+**Command reference** — all 896 commands with usage, options and examples,
+generated from the client's own help output at build time.
+
+![Command reference](screenshots/commands.png)
 
 ## Keyboard
 
@@ -153,6 +183,13 @@ gui/
 * `hw status`, `hw tune`, flash memory and tag scanning need a connected device.
   Without one they show an explicit "no device connected" state rather than
   placeholder numbers.
+* The **Flash memory** page needs a board with an external flash chip (RDV4, or
+  a build with `PLATFORM_EXTRAS=FLASH`). On a generic board the client answers
+  "not available in this mode", and the page says so instead of showing an
+  empty filesystem.
+* Client and firmware must be built from the same revision. If they are not, the
+  client refuses to communicate; the interface detects that specific failure,
+  explains it and falls back to OFFLINE mode so the rest stays usable.
 * Host metrics need `psutil` and port discovery needs `pyserial`. Without them
   the affected panels report the metric as unavailable instead of guessing.
 * Trace and dump paths containing spaces are rejected, because the client's

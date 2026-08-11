@@ -217,6 +217,8 @@ It runs the real `proxmark3` client behind a pseudo-terminal, so every action in
 the interface is an ordinary client command; the CLI remains fully usable at the
 same time.
 
+![Proxmark3 Command Centre](/gui/screenshots/dashboard.png)
+
 Third-party GUIs. The official PM3-GUI from Gaucho will not work. Not to mention is quite old and not maintained any longer.
 
 - [Proxmark3 Universal GUI](https://github.com/burma69/PM3UniversalGUI) will work more or less.
