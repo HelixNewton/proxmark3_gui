@@ -160,8 +160,9 @@ gui/
 
 ## Support
 
-If this interface is useful to you, you can support its development here:
-[buymeacoffee.com/sx8yfh9zrbs](https://buymeacoffee.com/sx8yfh9zrbs)
+Support the Proxmark3 Command Centre:
+
+[![Buy Me A Coffee](https://img.shields.io/badge/Buy%20Me%20A%20Coffee-support-FFDD00?style=for-the-badge&logo=buy-me-a-coffee&logoColor=black&labelColor=1a1a1a)](https://buymeacoffee.com/sx8yfh9zrbs)
 
 The Proxmark3 client and firmware themselves are the work of the
 [RfidResearchGroup/proxmark3](https://github.com/RfidResearchGroup/proxmark3)
